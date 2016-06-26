@@ -1,0 +1,13 @@
+## Remove Scala worksheets ##
+*.sc
+
+## Remove IntelliJ and SBT compile related folder ##
+.idea
+out
+META-INF
+target
+
+## File exclusions ##
+*.ipr
+*.iws
+*.java
