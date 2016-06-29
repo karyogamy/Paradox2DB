@@ -4,6 +4,7 @@ import eug.shared.GenericObject
 import org.jooq.impl.DSL._
 import org.jooq.impl.SQLDataType
 import org.jooq.{Constraint, DSLContext, Field, Table}
+import reader.{ObjectTable, VersionID}
 
 /**
   * Created by Ataraxia on 06/06/2016.
@@ -32,21 +33,21 @@ object Country extends ObjectTable {
 
   private val countrySequence = sequence("country_id_sequence")
 
-  private val primaryKey = constraint("COUNTRY_PK").primaryKey(primaryFields: _*)
-  private val uniqueKeys = constraint("COUNTRY_UK").unique(uniqueFields: _*)
-
   override def create(context: DSLContext): Unit = {
     context.createSequenceIfNotExists(countrySequence).execute()
 
+    val primaryKey = constraint("COUNTRY_PK").primaryKey(primaryFields: _*)
+    val uniqueKeys = constraint("COUNTRY_UK").unique(uniqueFields: _*)
+    val versionKeys: Constraint = Version.primaryForeignKey("COUNTRY_VERSION_FK", version_id)
+
     context.createTableIfNotExists(self)
       .columns(fields: _*)
-      .constraints(primaryKey, uniqueKeys, Version.primaryForeignKey("COUNTRY_VERSION_FK", version_id))
+      .constraints(primaryKey, uniqueKeys, versionKeys)
       .execute()
   }
 
-  override def insert(context: DSLContext,
-                      country: GenericObject,
-                      versionID: Option[Int]): Option[Int] = {
+  override type IDType = VersionID
+  override def insert(context: DSLContext, country: GenericObject, id: IDType): Option[Int] = {
     import util.EUGInterop._
     import collection.JavaConverters._
 
@@ -65,7 +66,7 @@ object Country extends ObjectTable {
       countryValues.getOrElse("is_top_ic_country", "no"),
       countryValues.getOrElse("num_ships", "0"),
       countryValues.getOrElse("focus_tree", "0"),
-      versionID.getOrElse(0)
+      id.versionID
     )
 
     order.values(vs.asJavaCollection).execute()

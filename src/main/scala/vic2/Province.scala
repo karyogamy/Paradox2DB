@@ -1,169 +1,97 @@
 package vic2
-
 import eug.shared.GenericObject
-import org.jooq.DSLContext
 import org.jooq.impl.DSL._
 import org.jooq.impl.SQLDataType
-import util.EUGInterop._
+import org.jooq.{DSLContext, Field, Table}
+import reader.{ObjectTable, ProvinceID, VersionID}
 
-import collection.JavaConverters._
+/**
+  * Created by Ataraxia on 08/06/2016.
+  */
+object Province extends ObjectTable {
+  import ProvinceFields._
 
-object Province {
-  private val provinceFields = Seq(
-    field("id", SQLDataType.INTEGER.nullable(false)),
-    field("name", SQLDataType.VARCHAR),
-    field("owner", SQLDataType.VARCHAR),
-    field("controller", SQLDataType.VARCHAR),
-    field("garrison", SQLDataType.FLOAT),
-    field("colonial", SQLDataType.FLOAT),
-    field("life_rating", SQLDataType.FLOAT),
-    field("last_imigration", SQLDataType.VARCHAR),
-    field("crime", SQLDataType.FLOAT)
+  override val fields: Seq[Field[_]] = Seq(
+    province_id,
+    province_number,
+    name,
+    owner,
+    controller,
+    garrison,
+    colonial,
+    life_rating,
+    last_imigration,
+    crime,
+    version_id
   )
+  override val self: Table[_] = table("province")
 
-  private val popFields = Seq(
-    field("id",             SQLDataType.INTEGER.nullable(false)),
-    field("type",           SQLDataType.VARCHAR),
-    field("size",           SQLDataType.INTEGER),
-    field("culture",        SQLDataType.VARCHAR),
-    field("religion",       SQLDataType.VARCHAR),
-    field("money",          SQLDataType.FLOAT),
-    field("con",            SQLDataType.FLOAT),
-    field("literacy",       SQLDataType.FLOAT),
-    field("bank",           SQLDataType.FLOAT),
-    field("con_factor",     SQLDataType.FLOAT),
-    field("everyday_needs", SQLDataType.FLOAT),
-    field("luxury_needs",   SQLDataType.FLOAT),
-    field("random",         SQLDataType.INTEGER),
-    field("promoted",       SQLDataType.INTEGER),
-    field("mil",            SQLDataType.FLOAT),
+  override val uniqueFields = Seq(province_number, version_id)
+  override val primaryFields = Seq(province_id)
 
-    // artisan-esque specific (e.g. vanilla: artisans, pdm: capitalists)
-    field("production_type", SQLDataType.VARCHAR),
-    field("last_spending", SQLDataType.FLOAT),
-    field("current_producing", SQLDataType.FLOAT),
-    field("percent_afforded", SQLDataType.FLOAT),
-    field("percent_sold_domestic", SQLDataType.FLOAT),
-    field("percent_sold_expert", SQLDataType.FLOAT),
-    field("leftover", SQLDataType.FLOAT),
-    field("throttle", SQLDataType.FLOAT),
-    field("need_cost", SQLDataType.FLOAT),
-    field("production_income", SQLDataType.FLOAT),
+  private val idSequence = sequence("province_id_sequence")
 
-    //foreign keys
-    field("prov_id", SQLDataType.INTEGER.nullable(false))
-  )
+  override def create(context: DSLContext): Unit = {
+    import ProvinceFields._
+    context.createSequenceIfNotExists(idSequence).execute()
 
-  val PROVINCE_FK = ForeignKey("province", "id")
+    val primaryKey = constraint("PROVINCE_PK").primaryKey(primaryFields: _*)
+    val uniqueKeys = constraint("PROVINCE_UK").unique(uniqueFields: _*)
+    val versionKeys = Version.primaryForeignKey("PROVINCE_VERSION_FK", version_id)
 
-  def insertProvinces(context: DSLContext, provinces: Seq[GenericObject]) = {
-    createProvinceTables(context)
-
-    insertProvinceValues(context, provinces)
-
-    provinces.foreach {
-      province =>
-        insertProvinceProperties(context, province)
-    }
-
-    println("provinces done......")
-  }
-
-  private def insertProvinceValues(context: DSLContext, provinces: Seq[GenericObject]): Int = {
-    val order = context.insertInto(
-      table("province"),
-      provinceFields: _*
-    )
-
-    provinces.foreach {
-      province =>
-        val map = province.valueMap()
-        val vs = Seq(
-          province.name.toInt,
-          map.getOrElse("name", ""),
-          map.getOrElse("owner", ""),
-          map.getOrElse("controller", ""),
-          map.getOrElse("garrison", "0"),
-          map.getOrElse("colonial", "0"),
-          map.getOrElse("life_rating", "0"),
-          map.getOrElse("last_imigration", ""),
-          map.getOrElse("crime", "0")
-        )
-
-        order.values(vs.asJavaCollection)
-    }
-    order.execute()
-  }
-
-  def createProvinceTables(context: DSLContext): Int = {
-    context.createTableIfNotExists("province")
-      .columns(provinceFields: _*)
-      .constraint(constraint("PROVINCE_ID").primaryKey("id"))
+    context.createTableIfNotExists(self)
+      .columns(fields: _*)
+      .constraints(primaryKey, uniqueKeys, versionKeys)
       .execute()
-
-    context.createTableIfNotExists("pop")
-      .columns(popFields: _*)
-      .constraints(
-        constraint("POP_PK").primaryKey("id", "type"),
-        constraint("POP_FK").foreignKey("prov_id").references(PROVINCE_FK.table, PROVINCE_FK.field)
-      ).execute()
   }
 
-  private def insertProvinceProperties(context: DSLContext, provinceBlock: GenericObject): Unit = {
-    val except = Seq("rgo", "building_construction", "party_loyalty", "unit_names", "modifier", "military_construction")
+  override type IDType = VersionID
+  override def insert(context: DSLContext, province: GenericObject, id: IDType): Option[Int] = {
+    import util.EUGInterop._
+    import collection.JavaConverters._
 
-    val provinceID = provinceBlock.name.toInt
-    val pops = provinceBlock.childrenSeq().filter( child => !except.contains(child.name) )
+    val query = context.insertInto(self, fields: _*)
 
-    insertPops(context, provinceID, pops)
-  }
+    val provinceProps = province.valueMap()
 
-  private def insertPops(context: DSLContext, provinceID: Int, pops: Seq[GenericObject]): Unit = {
-    // PK = (Province ID, Pop ID, Pop Type)
-
-    val order = context.insertInto(
-      table("pop"),
-      popFields: _*
+    val provinceNumber = province.name.toInt
+    val vs = Seq(
+      idSequence.nextval(),
+      provinceNumber,
+      provinceProps.getOrElse("name", ""),
+      provinceProps.getOrElse("owner", ""),
+      provinceProps.getOrElse("controller", ""),
+      provinceProps.getOrElse("garrison", "0"),
+      provinceProps.getOrElse("colonial", "0"),
+      provinceProps.getOrElse("life_rating", "0"),
+      provinceProps.getOrElse("last_imigration", ""),
+      provinceProps.getOrElse("crime", "0"),
+      id.versionID
     )
 
-    pops.foreach {
-      popBlock =>
-        val culture = popBlock.getVariable(2) //paradox, why the f-????
+    query.values(vs.asJavaCollection).execute()
 
-        val map = popBlock.valueMap()
+    val provinceID = ProvinceID(provinceNumber, id.versionID)
 
-        val vs = Seq(
-          map.getOrElse("id", throw new NullPointerException(s"Province ID cannot be null: $popBlock")),
-          popBlock.name,
-          map.getOrElse("size", "0"),
-          culture.varname,
-          culture.getValue,
-          map.getOrElse("money", "0"),
-          map.getOrElse("con", "0"),
-          map.getOrElse("literacy", "0"),
-          map.getOrElse("bank", "0"),
-          map.getOrElse("con_factor", "0"),
-          map.getOrElse("everyday_needs", "0"),
-          map.getOrElse("luxury_needs", "0"),
-          map.getOrElse("random", "0"),
-          map.getOrElse("promoted", "0"),
-          map.getOrElse("mil", "0"),
-          map.getOrElse("production_type", ""),
-          map.getOrElse("last_spending", "0"),
-          map.getOrElse("current_producing", "0"),
-          map.getOrElse("percent_afforded", "0"),
-          map.getOrElse("percent_sold_domestic", "0"),
-          map.getOrElse("percent_sold_expert", "0"),
-          map.getOrElse("leftover", "0"),
-          map.getOrElse("throttle", "0"),
-          map.getOrElse("need_cost", "0"),
-          map.getOrElse("production_income", "0"),
-          provinceID
-        )
+    val except = Seq("rgo", "building_construction", "party_loyalty", "unit_names", "modifier", "military_construction")
+    val pops = province.childrenSeq().filter( child => !except.contains(child.name) )
 
-        order.values(vs.asJavaCollection)
-    }
+    Pop.insert(context, pops, provinceID)
 
-    order.execute()
+    None
   }
+}
+
+object ProvinceFields {
+  val province_id =     field("province_id",      SQLDataType.INTEGER.nullable(false))
+  val province_number = field("province_number",  SQLDataType.INTEGER.nullable(false))
+  val name =            field("name",             SQLDataType.VARCHAR)
+  val owner =           field("owner",            SQLDataType.VARCHAR.nullable(false))
+  val controller =      field("controller",       SQLDataType.VARCHAR)
+  val garrison =        field("garrison",         SQLDataType.FLOAT)
+  val colonial =        field("colonial",         SQLDataType.FLOAT)
+  val life_rating =     field("life_rating",      SQLDataType.FLOAT)
+  val last_imigration = field("last_imigration",  SQLDataType.VARCHAR)
+  val crime =           field("crime",            SQLDataType.FLOAT)
+  val version_id =      field("version_id",       SQLDataType.INTEGER.nullable(false))
 }

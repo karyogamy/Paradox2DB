@@ -14,12 +14,13 @@ import org.jooq.impl.DSL
 object Reader {
 
   type SaveDirectory = String
+  type Directory = File
 
   def main(args: Array[String]) = {
     args match {
       case Array(folderLocation: SaveDirectory) =>
         val folder = new File(folderLocation)
-        folder.listFiles().sorted.foreach(readHoi4(_))
+        readVic2(folder)
         server()
 
         System.exit(0)
@@ -47,43 +48,62 @@ object Reader {
     while(true)()
   }
 
-  private def readVic2(file: File) = {
+  private def readVic2(folder: Directory) = {
     import vic2._
 
     val connection = DriverManager.getConnection("jdbc:h2:mem:vic2;DATABASE_TO_UPPER=false", "sa", "")
     val context = DSL.using(connection, SQLDialect.H2)
 
-    val readFile = EUGFileIO.load(file)
+    Version.create(context)
+    Country.create(context)
+    Province.create(context)
+    Pop.create(context)
 
-    val child = readFile.childrenSeq()
+    folder.listFiles().sorted.foreach {
+      file =>
+        val readFile = EUGFileIO.load(file)
+        val saveObjects = readFile.childrenSeq()
 
-    val countryRegex = "[A-Z]{3}".r
-    val countries = child.filter(block => countryRegex.pattern.matcher(block.name).matches())
+        val versionID = Version.insert(context, readFile)
+        val id = VersionID(versionID.getOrElse(0))
 
-    val provinceRegex = "\\d+".r
-    val provinces = child.filter(block => provinceRegex.pattern.matcher(block.name).matches())
+        val countryRegex = "[A-Z]{3}".r
+        val countries = saveObjects.filter(block => countryRegex.pattern.matcher(block.name).matches())
+        countries.foreach( country => Country.insert(context, country, id) )
 
-    Province.insertProvinces(context, provinces)
+        val provinceRegex = "\\d+".r
+        val provinces = saveObjects.filter(block => provinceRegex.pattern.matcher(block.name).matches())
+
+        val t0 = System.nanoTime()
+        provinces.foreach( province => Province.insert(context, province, id) )
+        val t1 = System.nanoTime()
+
+        println(s"Pop loading took ${t1 - t0} ns.")
+    }
   }
 
-  private def readHoi4(file: File): Unit = {
+  private def readHoi4(folder: Directory): Unit = {
     import hoi4._
 
     val connection = DriverManager.getConnection("jdbc:h2:mem:hoi4;DATABASE_TO_UPPER=false", "sa", "")
     val context = DSL.using(connection, SQLDialect.H2)
 
-    val readFile = EUGFileIO.load(file)
-    val savedObjects = readFile.childrenSeq()
-
     val tables = Seq(Version, Country, State)
     tables.foreach( _.create(context) )
 
-    val versionID = Version.insert(context, readFile)
+    folder.listFiles().sorted.foreach {
+      file =>
+        val readFile = EUGFileIO.load(file)
+        val savedObjects = readFile.childrenSeq()
 
-    val countries = savedObjects.find( _.name == "countries").getOrElse(throw new ObjectNotFoundException("countries"))
-    countries.childrenSeq().foreach( country => Country.insert(context, country, versionID) )
+        val versionID = Version.insert(context, readFile)
+        val id = VersionID(versionID.getOrElse(0))
 
-    val states = savedObjects.find( _.name == "states").getOrElse(throw new ObjectNotFoundException("states"))
-    states.childrenSeq().foreach( state => State.insert(context, state, versionID) )
+        val countries = savedObjects.find( _.name == "countries").getOrElse(throw new ObjectNotFoundException("countries"))
+        countries.childrenSeq().foreach( country => Country.insert(context, country, id) )
+
+        val states = savedObjects.find( _.name == "states").getOrElse(throw new ObjectNotFoundException("states"))
+        states.childrenSeq().foreach( state => State.insert(context, state, id) )
+    }
   }
 }

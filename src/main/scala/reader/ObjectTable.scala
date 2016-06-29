@@ -1,10 +1,8 @@
-package hoi4
+package reader
 
 import eug.shared.GenericObject
 import org.jooq.impl.DSL._
 import org.jooq.{Constraint, DSLContext, Field, Table}
-
-import scala.reflect.ClassTag
 
 /**
   * Created by Ataraxia on 08/06/2016.
@@ -33,10 +31,12 @@ trait ObjectTable {
     *
     * @param context JOOQ database connection for insertion.
     * @param dataObject GenericObject which contains all properties and values insert.
-    * @param versionID Partial key for the row, versionID is needed if more than one save is being dumped.
+    * @param id Partial key for the row, versionID is needed if more than one save is being dumped.
     * @return The primary key (if one exists) for this row.
     * */
-  def insert(context: DSLContext, dataObject: GenericObject, versionID: Option[Int]): Option[Int]
+
+  type IDType <: ID
+  def insert(context: DSLContext, dataObject: GenericObject, id: IDType): Option[Int]
 
   /** Given key name, makes a foreign key constraint to this table using its primary key(s). */
   def primaryForeignKey(name: String, fields: Field[_]*): Constraint = {

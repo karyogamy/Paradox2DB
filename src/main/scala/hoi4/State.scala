@@ -3,7 +3,7 @@ import eug.shared.GenericObject
 import org.jooq.impl.DSL._
 import org.jooq.impl.SQLDataType
 import org.jooq.{DSLContext, Field, Table}
-import reader.ObjectNotFoundException
+import reader.{ObjectNotFoundException, ObjectTable, VersionID}
 
 /**
   * Created by Ataraxia on 08/06/2016.
@@ -45,7 +45,8 @@ object State extends ObjectTable {
       .execute()
   }
 
-  override def insert(context: DSLContext, state: GenericObject, versionID: Option[Int]): Option[Int] = {
+  override type IDType = VersionID
+  override def insert(context: DSLContext, state: GenericObject, id: IDType): Option[Int] = {
     import util.EUGInterop._
     import collection.JavaConverters._
 
@@ -64,7 +65,7 @@ object State extends ObjectTable {
       manpowerProps.getOrElse("available", "0"),
       manpowerProps.getOrElse("locked", "0"),
       manpowerProps.getOrElse("total", "0"),
-      versionID.getOrElse(0)
+      id.versionID
     )
 
     query.values(vs.asJavaCollection).execute()

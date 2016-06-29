@@ -4,6 +4,7 @@ import eug.shared.GenericObject
 import org.jooq.DSLContext
 import org.jooq.impl.DSL._
 import org.jooq.impl.SQLDataType
+import reader.{VersionID, ObjectTable}
 
 object Version extends ObjectTable {
   import VersionField._
@@ -41,9 +42,11 @@ object Version extends ObjectTable {
       .execute()
   }
 
+  //TODO - jmo: get rid of this dummy id hack
+  override type IDType = VersionID
   override def insert(context: DSLContext,
                       version: GenericObject,
-                      unused: Option[Int] = None): Option[Int] = {
+                      unused: IDType = VersionID(-1)): Option[Int] = {
     import util.EUGInterop._
     import collection.JavaConverters._
 
@@ -75,7 +78,7 @@ private object VersionField {
   val version_id =        field("version_id", SQLDataType.INTEGER.nullable(false))
   val player =            field("player", SQLDataType.VARCHAR)
   val ideology =          field("ideology", SQLDataType.VARCHAR)
-  val date =              field("date", SQLDataType.VARCHAR.nullable(false))
+  val date =              field("date", SQLDataType.DATE.nullable(false))
   val difficulty =        field("difficulty", SQLDataType.INTEGER)
   val version =           field("version", SQLDataType.VARCHAR.nullable(false))
   val save_version =      field("save_version", SQLDataType.INTEGER)
